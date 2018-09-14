@@ -1,50 +1,40 @@
 version: 2.0
 
-defaults: &defaults
-  working_directory: ~/repo
-  docker:
-    - image: circleci/node:8.11
 
 jobs:
-
-
   checkout_code:
-    <<: *defaults
+    docker:
+      - image: circleci/node:8.11
     steps:
-      - restore_cache:
-          keys:
-            - source-{{ .Branch }}-{{ .Revision }}
-            - source-{{ .Branch }}-
-            - source-
       - checkout
-      - save_cache:
-          key: source-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - "~/repo"
 
   build:
     docker:
       - image: circleci/node:8.11
     environment:
       CI: false
+    working_directory: ~/serverless-stack/notes-app-client
     steps:
+      - checkout
+      - restore_cache:
+          keys:
+            # when lock file changes, use increasingly general patterns to restore cache
+            - node-v1-{{ .Branch }}-{{ checksum "package-lock.json" }}
+            - node-v1-{{ .Branch }}-
+            - node-v1-
+          working_directory: notes-app-client
+      - save_cache:
+          paths:
+            - ~/usr/local/lib/node_modules  # location depends on npm version
+          key: node-v1-{{ .Branch }}-{{ checksum "package-lock.json" }}
+          working_directory: notes-app-client
+      - run: sudo npm install -g npm@latest
       - run:
           command: pwd
+          working_directory: notes-app-client
       - run: ls
       - run:
-          name: update-npm
-          command: 'sudo npm install -g npm@latest'
-      - restore_cache: # special step to restore the dependency cache
-          key: dependency-cache-{{ checksum "notes-app-client/package.json" }}
-          working_directory: notes-app-client
-      - run:
-          name: install npm packages
-          command: npm install
-          working_directory: notes-app-client
-      - save_cache: # special step to save the dependency cache
-          key: dependency-cache-{{ checksum "package.json" }}
-          paths:
-            - ./node_modules
+          command: sudo npm install
           working_directory: notes-app-client
       - run:
           command: CI=false npm run build
@@ -52,12 +42,17 @@ jobs:
             CI: false
           working_directory: notes-app-client
       - run:
-          command: CI=false npm run deploy
-          environment:
-            CI: false
+          name: ls debug
+          command: ls && pwd
+      - save_cache:
+          key: out-build
+          paths:
+            - build
           working_directory: notes-app-client
-      - store_artifacts: # special step to save test results as as artifact
-          path: ./notes-app-client/build
+      - run:
+          name: Move compiled assets to workspace
+          command: mv build /tmp/workspace/build
+          working_directory: notes-app-client
 
   deploy:
     docker:
@@ -91,9 +86,10 @@ workflows:
   version: 2
   build-and-deploy:
     jobs:
-      - build:
-          requires:
-            - checkout_code
+      - build
       - deploy:
           requires:
             - build
+          # filters:
+            # branches:
+            #   only: master
