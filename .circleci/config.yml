@@ -42,7 +42,6 @@ jobs:
           name: Deploy to S3
           command: aws s3 sync notes-app-client/build s3://www-scott-note-taking-app/prod
 
-
 workflows:
   version: 2
   build-and-deploy:
@@ -52,5 +51,5 @@ workflows:
           requires:
             - build
           filters:
-            branches:
-              only: master
+            # branches:
+            #   only: master
